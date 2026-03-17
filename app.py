@@ -3,6 +3,7 @@ from flask_cors import CORS
 import base64
 import requests
 import os
+import json
 
 app = Flask(__name__)
 CORS(app)
@@ -12,7 +13,12 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 @app.route("/analizar", methods=["POST"])
 def analizar():
+
+    print("---- NUEVA PETICIÓN ----")
+    print("FILES:", request.files)
+    print("FORM:", request.form)
     print("CLAVE:", GROQ_API_KEY)
+
     try:
         # Validar imagen
         if "imagen" not in request.files:
@@ -29,7 +35,7 @@ def analizar():
             "Content-Type": "application/json"
         }
 
-        # Prompt profesional para Eat & Burn
+        # Prompt profesional
         prompt = """
 Eres Eat & Burn, un analizador experto en comida y nutrición.
 
@@ -58,36 +64,30 @@ Eres Eat & Burn, un analizador experto en comida y nutrición.
   },
   "tabla_ejercicios": "TARJETA ESTILO B"
 }
-
-Donde "TARJETA ESTILO B" debe ser una tabla visual moderna con flechas, así:
-
-╔══════════════════════════════════════════════╗
-║ 🔥  Calorías estimadas: XXX kcal             ║
-╠══════════════════════════════════════════════╣
-║ 🚶‍♂️  Caminar        →     XX min             ║
-║ 🏃‍♂️  Correr         →     XX min             ║
-║ 🚴‍♂️  Bicicleta      →     XX min             ║
-║ 🏊‍♂️  Natación       →     XX min             ║
-║ 💪   Gimnasio        →     XX min             ║
-╚══════════════════════════════════════════════╝
-
-- Usa calorías PRECISAS (no rangos).
-- Ajusta los tiempos según las calorías detectadas.
-- No añadas texto fuera del JSON.
 """
 
+        # FORMATO CORRECTO PARA GROQ
         data = {
             "model": "llama-3.2-11b-vision-preview",
             "messages": [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "input_text", "text": prompt},
-                        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{imagen_b64}"}
+                        {
+                            "type": "text",
+                            "text": prompt
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{imagen_b64}"
+                            }
+                        }
                     ]
                 }
             ],
-            "max_tokens": 800
+            "max_tokens": 800,
+            "response_format": {"type": "json_object"}
         }
 
         respuesta = requests.post(url, headers=headers, json=data)
@@ -96,12 +96,14 @@ Donde "TARJETA ESTILO B" debe ser una tabla visual moderna con flechas, así:
         # Extraer contenido
         contenido = resultado["choices"][0]["message"]["content"]
 
+        # Limpieza por si Groq devuelve ```json ... ```
+        if "```json" in contenido:
+            contenido = contenido.split("```json")[1].split("```")[0].strip()
+        elif "```" in contenido:
+            contenido = contenido.split("```")[1].split("```")[0].strip()
+
         # Convertir a JSON
-        try:
-            import json
-            contenido_json = json.loads(contenido)
-        except:
-            return jsonify({"error": "El modelo devolvió un formato inesperado", "raw": contenido})
+        contenido_json = json.loads(contenido)
 
         return jsonify(contenido_json)
 
