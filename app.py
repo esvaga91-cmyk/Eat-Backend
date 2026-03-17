@@ -12,6 +12,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 @app.route("/analizar", methods=["POST"])
 def analizar():
+    print("CLAVE:", GROQ_API_KEY)
     try:
         # Validar imagen
         if "imagen" not in request.files:
