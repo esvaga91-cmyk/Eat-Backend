@@ -1,4 +1,4 @@
-# v1 - Backend Eat & Burn con OpenRouter (Vision estable)
+# v2 - Backend Eat & Burn con OpenRouter (Vision estable con fallback)
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import base64
@@ -10,6 +10,46 @@ app = Flask(__name__)
 CORS(app)
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+# Modelos en orden de preferencia
+MODELOS_VISION = [
+    "llava-1.6",
+    "deepseek/deepseek-vl-1.3b-chat",
+    "qwen/qwen-vl-chat"
+]
+
+def llamar_modelo(modelo, prompt, imagen_b64):
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": modelo,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{imagen_b64}"
+                        }
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 1000,
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"}
+    }
+
+    respuesta = requests.post(url, headers=headers, json=data, timeout=60)
+    respuesta.raise_for_status()
+    return respuesta.json()
+
 
 @app.route("/analizar", methods=["POST"])
 def analizar():
@@ -29,9 +69,6 @@ def analizar():
         imagen_bytes = imagen.read()
         imagen_b64 = base64.b64encode(imagen_bytes).decode("utf-8")
 
-        # Modelo Vision estable y gratuito
-        modelo = "qwen/qwen2-vl-7b-instruct"
-
         prompt = """
         Eres Eat & Burn, un analizador experto en comida y nutrición.
         1. Determina si la imagen contiene COMIDA o BEBIDA.
@@ -47,55 +84,29 @@ def analizar():
         }
         """
 
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json"
-        }
+        # Intentar modelos en cascada
+        for modelo in MODELOS_VISION:
+            print(f"Probando modelo: {modelo}")
+            try:
+                resultado = llamar_modelo(modelo, prompt, imagen_b64)
 
-        # 🔥 FORMATO CORRECTO PARA OPENROUTER (OpenAI compatible)
-        data = {
-            "model": modelo,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{imagen_b64}"
-                            }
-                        }
-                    ]
-                }
-            ],
-            "max_tokens": 1000,
-            "temperature": 0.2,
-            "response_format": {"type": "json_object"}
-        }
+                if "choices" not in resultado:
+                    continue
 
-        try:
-            respuesta = requests.post(url, headers=headers, json=data, timeout=60)
-            respuesta.raise_for_status()
-        except requests.exceptions.Timeout:
-            return jsonify({"error": "La IA tardó demasiado en responder."}), 504
-        except requests.exceptions.RequestException as e:
-            return jsonify({"error": f"Error en OpenRouter: {str(e)}"}), 502
+                contenido = resultado["choices"][0]["message"]["content"]
 
-        resultado = respuesta.json()
+                try:
+                    return jsonify(json.loads(contenido))
+                except:
+                    if "```json" in contenido:
+                        contenido = contenido.split("```json")[1].split("```")[0].strip()
+                    return jsonify(json.loads(contenido))
 
-        if "choices" not in resultado:
-            return jsonify({"error": "Respuesta inesperada de la IA", "detalles": resultado}), 500
+            except Exception as e:
+                print(f"Modelo {modelo} falló: {str(e)}")
+                continue
 
-        contenido = resultado["choices"][0]["message"]["content"]
-
-        try:
-            return jsonify(json.loads(contenido))
-        except:
-            if "```json" in contenido:
-                contenido = contenido.split("```json")[1].split("```")[0].strip()
-            return jsonify(json.loads(contenido))
+        return jsonify({"error": "Ningún modelo pudo procesar la imagen"}), 502
 
     except Exception as e:
         print(f"ERROR CRÍTICO: {str(e)}")
