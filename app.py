@@ -1,4 +1,4 @@
-# v7 - Corregido, Seguro y Compatible con Groq Vision
+# v1 - Backend Eat & Burn con OpenRouter (Vision estable)
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import base64
@@ -9,19 +9,16 @@ import json
 app = Flask(__name__)
 CORS(app)
 
-# Clave desde variables de entorno
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 @app.route("/analizar", methods=["POST"])
 def analizar():
     print("---- NUEVA PETICIÓN RECIBIDA ----")
 
     try:
-        # 1. Validar clave
-        if not GROQ_API_KEY:
-            return jsonify({"error": "Falta la API Key en el servidor"}), 500
+        if not OPENROUTER_API_KEY:
+            return jsonify({"error": "Falta la API Key de OpenRouter"}), 500
 
-        # 2. Validar imagen
         if "imagen" not in request.files:
             return jsonify({"error": "No se envió ninguna imagen"}), 400
 
@@ -29,25 +26,17 @@ def analizar():
         if imagen.filename == "":
             return jsonify({"error": "Archivo de imagen no válido"}), 400
 
-        # Leer bytes y convertir a base64
         imagen_bytes = imagen.read()
         imagen_b64 = base64.b64encode(imagen_bytes).decode("utf-8")
 
-        # 3. Petición a Groq
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        # Modelo CORRECTO y ACTUAL
-        modelo = "llama-3.2-vision-preview"
+        # Modelo Vision estable y gratuito
+        modelo = "qwen/qwen2-vl-7b-instruct"
 
         prompt = """
         Eres Eat & Burn, un analizador experto en comida y nutrición.
         1. Determina si la imagen contiene COMIDA o BEBIDA.
-        2. Si NO contiene: Responde un JSON con "es_comida": false y un "mensaje".
-        3. Si SÍ contiene: Responde SOLO con un JSON con este formato:
+        2. Si NO contiene: responde un JSON con "es_comida": false y "mensaje".
+        3. Si SÍ contiene: responde SOLO con un JSON con este formato:
         {
           "es_comida": true,
           "descripcion": "...",
@@ -57,6 +46,12 @@ def analizar():
           "tabla_ejercicios": "TARJETA ESTILO B"
         }
         """
+
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
 
         data = {
             "model": modelo,
@@ -77,18 +72,16 @@ def analizar():
             "response_format": {"type": "json_object"}
         }
 
-        # 4. Llamada a Groq con timeout
         try:
             respuesta = requests.post(url, headers=headers, json=data, timeout=60)
             respuesta.raise_for_status()
         except requests.exceptions.Timeout:
-            return jsonify({"error": "La IA tardó demasiado en responder. Prueba con una imagen más pequeña."}), 504
+            return jsonify({"error": "La IA tardó demasiado en responder."}), 504
         except requests.exceptions.RequestException as e:
-            return jsonify({"error": f"Error en la API de Groq: {str(e)}"}), 502
+            return jsonify({"error": f"Error en OpenRouter: {str(e)}"}), 502
 
         resultado = respuesta.json()
 
-        # 5. Extraer JSON limpio
         if "choices" not in resultado:
             return jsonify({"error": "Respuesta inesperada de la IA", "detalles": resultado}), 500
 
@@ -109,14 +102,14 @@ def analizar():
 @app.route("/checkkey", methods=["GET"])
 def checkkey():
     return jsonify({
-        "status": "OK" if GROQ_API_KEY else "ERROR",
-        "configurada": bool(GROQ_API_KEY)
+        "status": "OK" if OPENROUTER_API_KEY else "ERROR",
+        "configurada": bool(OPENROUTER_API_KEY)
     })
 
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "OK", "app": "Eat & Burn API"})
+    return jsonify({"status": "OK", "app": "Eat & Burn API (OpenRouter)"})
 
 
 if __name__ == "__main__":
