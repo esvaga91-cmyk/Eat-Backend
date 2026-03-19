@@ -1,4 +1,4 @@
-# v2 - Backend Eat & Burn con OpenRouter (Vision estable con fallback)
+# v3 - Backend Eat & Burn con OpenRouter (Vision estable con fallback real)
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import base64
@@ -11,11 +11,12 @@ CORS(app)
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# Modelos en orden de preferencia
+# Modelos que SÍ aceptan imágenes en OpenRouter
 MODELOS_VISION = [
-    "llava-1.6",
-    "deepseek/deepseek-vl-1.3b-chat",
-    "qwen/qwen-vl-chat"
+    "google/gemini-2.0-flash-exp",
+    "google/gemini-pro-1.5",
+    "llava-next",
+    "mistral/pixtral-12b"
 ]
 
 def llamar_modelo(modelo, prompt, imagen_b64):
@@ -91,6 +92,7 @@ def analizar():
                 resultado = llamar_modelo(modelo, prompt, imagen_b64)
 
                 if "choices" not in resultado:
+                    print(f"Modelo {modelo} devolvió formato inesperado")
                     continue
 
                 contenido = resultado["choices"][0]["message"]["content"]
@@ -123,7 +125,7 @@ def checkkey():
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "OK", "app": "Eat & Burn API (OpenRouter)"})
+    return jsonify({"app": "API de Eat & Burn (OpenRouter)", "estado": "OK"})
 
 
 if __name__ == "__main__":
