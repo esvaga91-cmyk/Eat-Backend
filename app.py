@@ -53,6 +53,7 @@ def analizar():
             "Content-Type": "application/json"
         }
 
+        # 🔥 FORMATO CORRECTO PARA OPENROUTER (OpenAI compatible)
         data = {
             "model": modelo,
             "messages": [
@@ -61,8 +62,10 @@ def analizar():
                     "content": [
                         {"type": "text", "text": prompt},
                         {
-                            "type": "input_image",
-                            "image_url": f"data:image/jpeg;base64,{imagen_b64}"
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{imagen_b64}"
+                            }
                         }
                     ]
                 }
