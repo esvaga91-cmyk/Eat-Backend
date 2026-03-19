@@ -1,4 +1,4 @@
-# v3 - Backend Eat & Burn con OpenRouter (Vision estable con fallback real)
+# v4 - Backend Eat & Burn con OpenAI GPT‑4.0 Vision
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import base64
@@ -9,56 +9,15 @@ import json
 app = Flask(__name__)
 CORS(app)
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-
-# Modelos que SÍ aceptan imágenes en OpenRouter
-MODELOS_VISION = [
-    "google/gemini-2.0-flash-exp",
-    "google/gemini-pro-1.5",
-    "llava-next",
-    "mistral/pixtral-12b"
-]
-
-def llamar_modelo(modelo, prompt, imagen_b64):
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "model": modelo,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{imagen_b64}"
-                        }
-                    }
-                ]
-            }
-        ],
-        "max_tokens": 1000,
-        "temperature": 0.2,
-        "response_format": {"type": "json_object"}
-    }
-
-    respuesta = requests.post(url, headers=headers, json=data, timeout=60)
-    respuesta.raise_for_status()
-    return respuesta.json()
-
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 @app.route("/analizar", methods=["POST"])
 def analizar():
     print("---- NUEVA PETICIÓN RECIBIDA ----")
 
     try:
-        if not OPENROUTER_API_KEY:
-            return jsonify({"error": "Falta la API Key de OpenRouter"}), 500
+        if not OPENAI_API_KEY:
+            return jsonify({"error": "Falta la API Key de OpenAI"}), 500
 
         if "imagen" not in request.files:
             return jsonify({"error": "No se envió ninguna imagen"}), 400
@@ -67,9 +26,11 @@ def analizar():
         if imagen.filename == "":
             return jsonify({"error": "Archivo de imagen no válido"}), 400
 
+        # Convertir imagen a base64
         imagen_bytes = imagen.read()
         imagen_b64 = base64.b64encode(imagen_bytes).decode("utf-8")
 
+        # Prompt
         prompt = """
         Eres Eat & Burn, un analizador experto en comida y nutrición.
         1. Determina si la imagen contiene COMIDA o BEBIDA.
@@ -85,30 +46,51 @@ def analizar():
         }
         """
 
-        # Intentar modelos en cascada
-        for modelo in MODELOS_VISION:
-            print(f"Probando modelo: {modelo}")
-            try:
-                resultado = llamar_modelo(modelo, prompt, imagen_b64)
+        # Llamada a OpenAI GPT‑4.0 Vision
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
 
-                if "choices" not in resultado:
-                    print(f"Modelo {modelo} devolvió formato inesperado")
-                    continue
+        data = {
+            "model": "gpt-4.0",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{imagen_b64}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "max_tokens": 1000,
+            "temperature": 0.2,
+            "response_format": {"type": "json_object"}
+        }
 
-                contenido = resultado["choices"][0]["message"]["content"]
+        respuesta = requests.post(url, headers=headers, json=data, timeout=60)
+        respuesta.raise_for_status()
 
-                try:
-                    return jsonify(json.loads(contenido))
-                except:
-                    if "```json" in contenido:
-                        contenido = contenido.split("```json")[1].split("```")[0].strip()
-                    return jsonify(json.loads(contenido))
+        resultado = respuesta.json()
 
-            except Exception as e:
-                print(f"Modelo {modelo} falló: {str(e)}")
-                continue
+        if "choices" not in resultado:
+            return jsonify({"error": "Respuesta inesperada de OpenAI", "detalles": resultado}), 500
 
-        return jsonify({"error": "Ningún modelo pudo procesar la imagen"}), 502
+        contenido = resultado["choices"][0]["message"]["content"]
+
+        # Intentar parsear JSON
+        try:
+            return jsonify(json.loads(contenido))
+        except:
+            if "```json" in contenido:
+                contenido = contenido.split("```json")[1].split("```")[0].strip()
+            return jsonify(json.loads(contenido))
 
     except Exception as e:
         print(f"ERROR CRÍTICO: {str(e)}")
@@ -118,14 +100,14 @@ def analizar():
 @app.route("/checkkey", methods=["GET"])
 def checkkey():
     return jsonify({
-        "status": "OK" if OPENROUTER_API_KEY else "ERROR",
-        "configurada": bool(OPENROUTER_API_KEY)
+        "status": "OK" if OPENAI_API_KEY else "ERROR",
+        "configurada": bool(OPENAI_API_KEY)
     })
 
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"app": "API de Eat & Burn (OpenRouter)", "estado": "OK"})
+    return jsonify({"app": "API de Eat & Burn (OpenAI GPT‑4.0)", "estado": "OK"})
 
 
 if __name__ == "__main__":
