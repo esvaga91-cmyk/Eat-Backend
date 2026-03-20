@@ -1,4 +1,4 @@
-# v4 - Backend Eat & Burn con OpenAI GPT‑4.0 Vision
+# v5 - Backend Eat & Burn con OpenAI GPT‑4.0 Vision (Railway Ready)
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import base64
@@ -46,8 +46,8 @@ def analizar():
         }
         """
 
-        # Llamada a OpenAI GPT‑4.0 Vision
-        url = "https://api.openai.com/v1/chat/completions"
+        # Llamada correcta a OpenAI (nuevo endpoint)
+        url = "https://api.openai.com/v1/responses"
         headers = {
             "Authorization": f"Bearer {OPENAI_API_KEY}",
             "Content-Type": "application/json"
@@ -55,21 +55,19 @@ def analizar():
 
         data = {
             "model": "gpt-4.0",
-            "messages": [
+            "input": [
                 {
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt},
                         {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{imagen_b64}"
-                            }
+                            "type": "input_image",
+                            "image_url": f"data:image/jpeg;base64,{imagen_b64}"
                         }
                     ]
                 }
             ],
-            "max_tokens": 1000,
+            "max_output_tokens": 1000,
             "temperature": 0.2,
             "response_format": {"type": "json_object"}
         }
@@ -79,10 +77,8 @@ def analizar():
 
         resultado = respuesta.json()
 
-        if "choices" not in resultado:
-            return jsonify({"error": "Respuesta inesperada de OpenAI", "detalles": resultado}), 500
-
-        contenido = resultado["choices"][0]["message"]["content"]
+        # El contenido viene en: resultado["output"][0]["content"][0]["text"]
+        contenido = resultado["output"][0]["content"][0]["text"]
 
         # Intentar parsear JSON
         try:
@@ -111,5 +107,5 @@ def home():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 8080))  # Railway usa 8080
     app.run(host="0.0.0.0", port=port)
